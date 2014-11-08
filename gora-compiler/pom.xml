@@ -10,6 +10,7 @@
 
     http://www.apache.org/licenses/LICENSE-2.0
 
+<<<<<<< Updated upstream
   Unless required by applicable law or agreed to in writing,
   software distributed under the License is distributed on an
   "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -27,6 +28,23 @@
   </parent>
   <artifactId>gora-compiler</artifactId>
   <packaging>bundle</packaging>
+=======
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+    -->
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+      <groupId>org.apache.gora</groupId>
+      <artifactId>gora</artifactId>
+      <version>0.5-SNAPSHOT</version>
+      <relativePath>../</relativePath>
+    </parent>
+    <artifactId>gora-compiler</artifactId>
+    <packaging>bundle</packaging>
+>>>>>>> Stashed changes
 
   <name>Apache Gora :: Compiler</name>
   <url>http://gora.apache.org</url>
@@ -34,6 +52,7 @@
     persistence for big data. Gora supports persisting to column stores, key value stores, 
     document stores and RDBMSs, and analyzing the data with extensive Apache Hadoop MapReduce 
     support.</description>
+<<<<<<< Updated upstream
   <inceptionYear>2010</inceptionYear>
   <organization>
     <name>The Apache Software Foundation</name>
@@ -97,5 +116,77 @@
       <artifactId>avro-compiler</artifactId>
     </dependency>
   </dependencies>
+=======
+    <inceptionYear>2010</inceptionYear>
+    <organization>
+      <name>The Apache Software Foundation</name>
+      <url>http://www.apache.org/</url>
+    </organization>
+    <issueManagement>
+      <system>JIRA</system>
+      <url>https://issues.apache.org/jira/browse/GORA</url>
+    </issueManagement>
+    <ciManagement>
+      <system>Jenkins</system>
+      <url>https://builds.apache.org/job/Gora-trunk/</url>
+    </ciManagement>
 
+    <properties>
+        <osgi.import>*</osgi.import>
+        <osgi.export>org.apache.gora.compiler*;version="${project.version}";-noimport:=true</osgi.export>
+    </properties>
+    <build>
+        <directory>target</directory>
+        <outputDirectory>target/classes</outputDirectory>
+        <finalName>${project.artifactId}-${project.version}</finalName>
+        <testOutputDirectory>target/test-classes</testOutputDirectory>
+        <testSourceDirectory>src/test/java</testSourceDirectory>
+        <sourceDirectory>src/main/java</sourceDirectory>
+        <testResources>
+            <testResource>
+                <directory>src/test/conf/</directory>
+                <includes>
+                    <include>**</include>
+                </includes>
+            </testResource>
+        </testResources>
+        <resources>
+          <resource>
+            <directory>src/main/velocity</directory>
+            <includes>
+              <include>**/*.vm</include>
+            </includes>
+          </resource>
+        </resources>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-jar-plugin</artifactId>
+            <configuration>
+              <archive>
+                <manifest>
+                  <mainClass>org.apache.gora.compiler.GoraCompiler</mainClass>
+                  <packageName>org.apache.gora.compiler</packageName>
+                </manifest>
+              </archive>
+            </configuration>
+          </plugin>
+        </plugins>
+    </build>
+
+    <dependencies>
+      <dependency>
+        <groupId>org.apache.avro</groupId>
+        <artifactId>avro-compiler</artifactId>
+      </dependency>
+      
+      <dependency>
+        <groupId>org.apache.camel</groupId>
+        <artifactId>camel-xmljson</artifactId>
+        <version>2.12.4</version>
+        <!-- Use the same version as camel-core, but remember that this component is only available from 2.10 onwards -->
+      </dependency>
+>>>>>>> Stashed changes
+
+    </dependencies>
 </project>

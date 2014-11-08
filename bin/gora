@@ -46,7 +46,11 @@ if [ $# = 0 ]; then
   echo "  goracompiler               Run Compiler"
   echo "  specificcompiler           Run Avro Specific Compiler"
   echo "  dynamocompiler             Run Gora DynamoDB Compiler"
+<<<<<<< Updated upstream
   echo "  goracisetup                Run the GoraCI Rackspace orchestration setup"
+=======
+  echo "  jsontoxmlmapper            Run Gora JSON to XML Mapper"
+>>>>>>> Stashed changes
   echo "  logmanager                 Run the tutorial log manager"
   echo "  loganalytics               Run the tutorial log analytics"
   echo "  junit         	     Run the given JUnit test"
@@ -122,10 +126,17 @@ elif [ "$COMMAND" = "dynamocompiler" ] ; then
   MODULE=gora-dynamodb
   CLASSPATH=$CLASSPATH:$GORA_HOME/$MODULE/target/classes/
   CLASS=org.apache.gora.dynamodb.compiler.GoraDynamoDBCompiler
+<<<<<<< Updated upstream
 elif [ "$COMMAND" = "goracisetup" ] ; then
   MODULE=gora-goraci
   CLASSPATH=$CLASSPATH:$GORA_HOME/$MODULE/target/classes/
   CLASS=org.apache.gora.goraci.rackspace.RackspaceOrchestration
+=======
+elif [ "$COMMAND" = "jsontoxmlmapper" ] ; then
+  MODULE=gora-compiler-cli
+  CLASSPATH=$CLASSPATH:$GORA_HOME/$MODULE/target/classes/
+  CLASS=org.apache.gora.compiler.mapper.cli.GoraJSONXMLMappingCLI
+>>>>>>> Stashed changes
 elif [ "$COMMAND" = "logmanager" ] ; then
   MODULE=gora-tutorial
   CLASSPATH=$CLASSPATH:$GORA_HOME/$MODULE/target/classes/
