@@ -72,8 +72,8 @@ public class AvroSerializerUtil {
     
     SpecificDatumReader<?> reader = (SpecificDatumReader<?>)readerMap.get(schemaId);
     if (reader == null) {
-      reader = new SpecificDatumReader(schema);// ignore dirty bits
-      SpecificDatumReader localReader=null;
+      reader = new SpecificDatumReader<Object>(schema);// ignore dirty bits
+      SpecificDatumReader<?> localReader=null;
       if((localReader=readerMap.putIfAbsent(schemaId, reader))!=null) {
         reader = localReader;
       }

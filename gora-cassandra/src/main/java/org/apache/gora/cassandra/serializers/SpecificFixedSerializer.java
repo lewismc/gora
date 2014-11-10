@@ -47,9 +47,11 @@ public class SpecificFixedSerializer extends AbstractSerializer<SpecificFixed> {
     return serializer;
   }
 
+  @SuppressWarnings("rawtypes")
   private static Map<Class, SpecificFixedSerializer> classToSerializerMap = new HashMap<Class, SpecificFixedSerializer>();
 
-  public static SpecificFixedSerializer get(Class clazz) {
+  @SuppressWarnings("unchecked")
+  public static SpecificFixedSerializer get(@SuppressWarnings("rawtypes") Class clazz) {
     SpecificFixedSerializer serializer = classToSerializerMap.get(clazz);
     if (serializer == null) {
       serializer = new SpecificFixedSerializer(clazz);

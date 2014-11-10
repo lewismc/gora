@@ -43,11 +43,14 @@ public class MapSerializer<T> extends AbstractSerializer<Map<CharSequence, T>> {
 
   public static final Logger LOG = LoggerFactory.getLogger(MapSerializer.class);
 
+  @SuppressWarnings("rawtypes")
   private static Map<Type, MapSerializer> valueTypeToSerializerMap = new HashMap<Type, MapSerializer>();
+  @SuppressWarnings("rawtypes")
   private static Map<Class, MapSerializer> fixedClassToSerializerMap = new HashMap<Class, MapSerializer>();
 
-  public static MapSerializer get(Type valueType) {
-    MapSerializer serializer = valueTypeToSerializerMap.get(valueType);
+  @SuppressWarnings("rawtypes")
+  public static MapSerializer<?> get(Type valueType) {
+    MapSerializer<?> serializer = valueTypeToSerializerMap.get(valueType);
     if (serializer == null) {
       serializer = new MapSerializer(valueType);
       valueTypeToSerializerMap.put(valueType, serializer);
@@ -55,11 +58,12 @@ public class MapSerializer<T> extends AbstractSerializer<Map<CharSequence, T>> {
     return serializer;
   }
 
-  public static MapSerializer get(Type valueType, Class clazz) {
+  @SuppressWarnings({ "unchecked", "rawtypes" })
+  public static MapSerializer<?> get(Type valueType, Class<?> clazz) {
     if (valueType != Type.FIXED) {
       return null;
     }
-    MapSerializer serializer = valueTypeToSerializerMap.get(clazz);
+    MapSerializer<?> serializer = valueTypeToSerializerMap.get(clazz);
     if (serializer == null) {
       serializer = new MapSerializer(clazz);
       fixedClassToSerializerMap.put(clazz, serializer);
@@ -67,7 +71,7 @@ public class MapSerializer<T> extends AbstractSerializer<Map<CharSequence, T>> {
     return serializer;
   }
 
-  public static MapSerializer get(Schema valueSchema) {
+  public static MapSerializer<?> get(Schema valueSchema) {
     Type type = valueSchema.getType();
     if (type == Type.FIXED) {
       return get(Type.FIXED, TypeUtils.getClass(valueSchema));
@@ -76,9 +80,11 @@ public class MapSerializer<T> extends AbstractSerializer<Map<CharSequence, T>> {
     }
   }
 
+  @SuppressWarnings("unused")
   private Schema valueSchema = null;
   private Type valueType = null;
   private int size = -1;
+  @SuppressWarnings("unused")
   private Class<T> clazz = null;
   private Serializer<T> valueSerializer = null;
 

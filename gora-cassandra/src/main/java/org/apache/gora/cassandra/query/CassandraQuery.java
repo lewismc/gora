@@ -26,19 +26,27 @@ import org.apache.gora.query.Query;
 import org.apache.gora.query.impl.QueryBase;
 import org.apache.gora.store.DataStore;
 
-public class CassandraQuery<K, T extends PersistentBase> extends QueryBase<K, T> {
+/**
+ * Cassandra-specific Gora query
+ *
+ * @param PK
+ *          cassandra primary key base class
+ * @return T persistent class
+ */
+public class CassandraQuery<PK, T extends PersistentBase> extends QueryBase<PK, T> {
 
-  private Query<K, T> query;
-  
+  /** field <code>query</code> holds the gora query */
+  private Query<PK, T> query;
+
   /**
    * Maps Avro fields to Cassandra columns.
    */
   private Map<String, List<String>> familyMap;
-  
+
   public CassandraQuery() {
     super(null);
   }
-  public CassandraQuery(DataStore<K, T> dataStore) {
+  public CassandraQuery(DataStore<PK, T> dataStore) {
     super(dataStore);
   }
   public void setFamilyMap(Map<String, List<String>> familyMap) {
@@ -47,27 +55,27 @@ public class CassandraQuery<K, T extends PersistentBase> extends QueryBase<K, T>
   public Map<String, List<String>> getFamilyMap() {
     return familyMap;
   }
-  
+
   /**
-   * @param family the family name
-   * @return an array of the query column names belonging to the family
+   * @param family
+   *          the family name
+   * @return an array of the query column qualifiers belonging to the family
    */
-  public String[] getColumns(String family) {
-    
-    List<String> columnList = familyMap.get(family);
-    String[] columns = new String[columnList.size()];
-    for (int i = 0; i < columns.length; ++i) {
-      columns[i] = columnList.get(i);
+  public String[] getColumnQualifiers(String family) {
+    List<String> columnQualifierList = familyMap.get(family);
+    String[] columnQualifiers = new String[columnQualifierList.size()];
+    for (int i = 0; i < columnQualifiers.length; ++i) {
+      columnQualifiers[i] = columnQualifierList.get(i);
     }
-    return columns;
+    return columnQualifiers;
   }
-  public Query<K, T> getQuery() {
+  public Query<PK, T> getQuery() {
     return query;
   }
-  public void setQuery(Query<K, T> query) {
+  public void setQuery(Query<PK, T> query) {
     this.query = query;
   }
-  
-  
+
+
 
 }

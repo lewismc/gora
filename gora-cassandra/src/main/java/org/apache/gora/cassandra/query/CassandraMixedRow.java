@@ -20,39 +20,28 @@ package org.apache.gora.cassandra.query;
 
 import java.util.ArrayList;
 
-import me.prettyprint.cassandra.serializers.StringSerializer;
-
+import me.prettyprint.hector.api.beans.DynamicComposite;
 
 /**
  * List of key value pairs representing a row, tagged by a key.
+ *
+ * @param PK
+ *          the cassandra primary key base class
  */
-public class CassandraRow<K> extends ArrayList<CassandraColumn> {
+public class CassandraMixedRow<PK> extends ArrayList<CassandraColumn<DynamicComposite>> {
 
-  /**
-   * 
-   */
-  private static final long serialVersionUID = -7620939600192859652L;
-  private K key;
+  /** field <code>serialVersionUID</code> */
+  private static final long serialVersionUID = 1L;
 
-  public K getKey() {
+  // the primary key identifying the result object
+  private PK key;
+
+  public PK getKey() {
     return this.key;
   }
 
-  public void setKey(K key) {
+  public void setKey(PK key) {
     this.key = key;
-  }
-  
-  /**
-   * Gets a specific CassandraColumn within a row using its name
-   * @param pCassandraColumnName
-   * @return CassandraColumn
-   */
-  public CassandraColumn getCassandraColumn(String pCassandraColumnName){
-    for (CassandraColumn cColumn: this)
-      if ( pCassandraColumnName.equals(StringSerializer.get().fromByteBuffer(cColumn.getName())) )
-        return cColumn;
-    
-    return null;
   }
 
 }

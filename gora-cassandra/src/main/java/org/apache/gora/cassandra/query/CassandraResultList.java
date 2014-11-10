@@ -23,32 +23,31 @@ import java.util.HashMap;
 
 /**
  * List data structure to keep the order coming from the Cassandra selects.
+ *
+ * @param PK
+ *          Cassandra primary key base type
  */
-public class CassandraResultSet<K> extends ArrayList<CassandraRow<K>> {
-
-  /**
-   * 
-   */
-  private static final long serialVersionUID = -7620939600192859652L;
+public class CassandraResultList<PK> extends ArrayList<CassandraMixedRow<PK>> {
+  /** field <code>serialVersionUID</code> */
+  private static final long serialVersionUID = 1L;
 
   /**
    * Maps keys to indices in the list.
    */
-  private HashMap<K, Integer> indexMap = new HashMap<K, Integer>();
+  private HashMap<PK, Integer> indexMap = new HashMap<PK, Integer>();
 
-  public CassandraRow<K> getRow(K key) {
+  public CassandraMixedRow<PK> getMixedRow(PK key) {
     Integer integer = this.indexMap.get(key);
     if (integer == null) {
       return null;
     }
-    
+
     return this.get(integer);
   }
 
-  public void putRow(K key, CassandraRow<K> cassandraRow) {
+  public void putMixedRow(PK key, CassandraMixedRow<PK> cassandraRow) {
     this.add(cassandraRow);
-    this.indexMap.put(key, this.size()-1);
-  } 
-  
+    this.indexMap.put(key, this.size() - 1);
+  }
 
 }

@@ -32,9 +32,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class CassandraMappingManager {
-  
+
   public static final Logger LOG = LoggerFactory.getLogger(CassandraMappingManager.class);
-  
+
   private static final String MAPPING_FILE = "gora-cassandra-mapping.xml";
   private static final String KEYSPACE_ELEMENT = "keyspace";
   private static final String NAME_ATTRIBUTE = "name";
@@ -42,6 +42,7 @@ public class CassandraMappingManager {
   private static final String KEYCLASS_ATTRIBUTE = "keyClass";
   private static final String HOST_ATTRIBUTE = "host";
   private static final String CLUSTER_ATTRIBUTE = "cluster";
+  private static final String PRIMARYKEY_ELEMENT = "primaryKey";
   // singleton
   private static CassandraMappingManager manager = new CassandraMappingManager();
 
@@ -49,15 +50,17 @@ public class CassandraMappingManager {
     return manager;
   }
 
- /**
-  * Objects to maintain mapped keyspaces
-  */
+  /**
+   * Objects to maintain mapped keyspaces
+   */
   private Map<String, Element> keyspaceMap = null;
   private Map<String, Element>  mappingMap = null;
+  private Map<String, Element> primaryKeyMap = null;
 
   private CassandraMappingManager() {
     keyspaceMap = new HashMap<String, Element>();
     mappingMap  = new HashMap<String, Element>();
+    primaryKeyMap  = new HashMap<String, Element>();
     try {
       loadConfiguration();
     }
@@ -85,7 +88,15 @@ public class CassandraMappingManager {
       LOG.error("Keyspace element does not exist for keyspaceName=" + keyspaceName);
       return null;
     }
-    return new CassandraMapping(keyspaceElement, mappingElement);
+    String keyClass = mappingElement.getAttributeValue(KEYCLASS_ATTRIBUTE);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("className=" + className + " -> keyClass=" + keyClass);
+    }
+    Element primaryKeyElement = primaryKeyMap.get(keyClass);
+    if (primaryKeyElement == null) {
+      LOG.info("PrimaryKey element does not exist for keyClass=" + keyClass);
+    }
+    return new CassandraMapping(keyspaceElement, mappingElement, primaryKeyElement);
   }
 
   /**
@@ -121,7 +132,7 @@ public class CassandraMappingManager {
         String hostName = keyspace.getAttributeValue(HOST_ATTRIBUTE);
         if (LOG.isDebugEnabled()) {
           LOG.debug("Located Cassandra Keyspace: '" + keyspaceName + "' in cluster '" + clusterName + 
-          "' on host '" + hostName + "'.");
+              "' on host '" + hostName + "'.");
         }
         if (keyspaceName == null) {
           LOG.error("Error locating Cassandra Keyspace name attribute!");
@@ -130,7 +141,7 @@ public class CassandraMappingManager {
         keyspaceMap.put(keyspaceName, keyspace);
       }
     }
-      
+
     // load column definitions    
     List<Element> mappings = root.getChildren(MAPPING_ELEMENT);
     if (mappings == null || mappings.size() == 0) {
@@ -143,14 +154,33 @@ public class CassandraMappingManager {
         String keyClassName = mapping.getAttributeValue(KEYCLASS_ATTRIBUTE);
         String keyspaceName = mapping.getAttributeValue(KEYSPACE_ELEMENT);
         if (LOG.isDebugEnabled()) {
-        LOG.debug("Located Cassandra Mapping: keyClass: '" + keyClassName + "' in storage class '" 
-          + className + "' for Keyspace '" + keyspaceName + "'.");
+          LOG.debug("Located Cassandra Mapping: keyClass: '" + keyClassName + "' in storage class '" 
+              + className + "' for Keyspace '" + keyspaceName + "'.");
         }
         if (className == null) {
           LOG.error("Error locating Cassandra Mapping class name attribute!");
           continue;
         }
         mappingMap.put(className, mapping);
+      }
+    }
+    // load primary key definitions
+    List<Element> primaryKeys = root.getChildren(PRIMARYKEY_ELEMENT);
+    if (primaryKeys == null || primaryKeys.size() == 0) {
+      LOG.error("Error locating Cassandra PrimaryKey element!");
+    }
+    else {
+      for (Element primaryKey : primaryKeys) {
+        // associate persistent and class names for keyspace(s)
+        String primaryKeyName = primaryKey.getAttributeValue(NAME_ATTRIBUTE);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Located Cassandra PrimaryKey: name: '" + primaryKeyName + "'.");
+        }
+        if (primaryKeyName == null) {
+          LOG.error("Error locating Cassandra PrimaryKey name attribute!");
+          continue;
+        }
+        primaryKeyMap.put(primaryKeyName, primaryKey);
       }
     }
   }

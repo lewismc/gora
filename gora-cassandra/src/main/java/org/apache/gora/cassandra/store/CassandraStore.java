@@ -26,12 +26,14 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 
 import me.prettyprint.hector.api.beans.ColumnSlice;
+import me.prettyprint.hector.api.beans.DynamicComposite;
 import me.prettyprint.hector.api.beans.HColumn;
 import me.prettyprint.hector.api.beans.HSuperColumn;
 import me.prettyprint.hector.api.beans.Row;
@@ -49,9 +51,9 @@ import org.apache.avro.specific.SpecificDatumWriter;
 import org.apache.avro.util.Utf8;
 import org.apache.gora.cassandra.query.CassandraQuery;
 import org.apache.gora.cassandra.query.CassandraResult;
-import org.apache.gora.cassandra.query.CassandraResultSet;
-import org.apache.gora.cassandra.query.CassandraRow;
+import org.apache.gora.cassandra.query.CassandraResultList;
 import org.apache.gora.cassandra.query.CassandraSubColumn;
+import org.apache.gora.cassandra.query.CassandraMixedRow;
 import org.apache.gora.cassandra.query.CassandraSuperColumn;
 import org.apache.gora.persistency.Persistent;
 import org.apache.gora.persistency.impl.DirtyListWrapper;
@@ -63,6 +65,7 @@ import org.apache.gora.query.impl.PartitionQueryImpl;
 import org.apache.gora.store.DataStoreFactory;
 import org.apache.gora.store.impl.DataStoreBase;
 import org.apache.gora.cassandra.serializers.AvroSerializerUtil;
+import org.apache.gora.util.GoraException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,28 +73,34 @@ import org.slf4j.LoggerFactory;
  * {@link org.apache.gora.cassandra.store.CassandraStore} is the primary class 
  * responsible for directing Gora CRUD operations into Cassandra. We (delegate) rely 
  * heavily on {@link org.apache.gora.cassandra.store.CassandraClient} for many operations
- * such as initialization, creating and deleting schemas (Cassandra Keyspaces), etc.  
+ * such as initialization, creating and deleting schemas (Cassandra Keyspaces), etc.
+ * @param PK
+ *           primary key class (not cassandra row key)
+ * @param T
+ *          persistent class
  */
-public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K, T> {
+public class CassandraStore<PK, T extends PersistentBase> extends DataStoreBase<PK, T> {
 
   /** Logging implementation */
   public static final Logger LOG = LoggerFactory.getLogger(CassandraStore.class);
 
   /** Consistency property level for Cassandra column families */
   private static final String COL_FAM_CL = "cf.consistency.level";
-   
+
   /** Consistency property level for Cassandra read operations. */
   private static final String READ_OP_CL = "read.consistency.level";
-  
+
   /** Consistency property level for Cassandra write operations. */
   private static final String WRITE_OP_CL = "write.consistency.level";
-  
+
   /** Variables to hold different consistency levels defined by the properties. */
   public static String colFamConsLvl;
   public static String readOpConsLvl;
   public static String writeOpConsLvl;
-  
-  private CassandraClient<K, T> cassandraClient = new CassandraClient<K, T>();
+
+  private CassandraClient<PK, T> cassandraClient = new CassandraClient<PK, T>();
+
+  private CassandraKeyMapper<PK, T> keyMapper;
 
   /**
    * Fixed string with value "UnionIndex" used to generate an extra column based on 
@@ -106,16 +115,15 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
 
   /**
    * The values are Avro fields pending to be stored.
-   *
-   * We want to iterate over the keys in insertion order.
-   * We don't want to lock the entire collection before iterating over the keys, 
-   * since in the meantime other threads are adding entries to the map.
+   *We want to iterate over the keys in insertion order. We don't want to lock the entire
+   * collection before iterating over the keys, since in the meantime other threads are adding
+   * entries to the map.
    */
-  private Map<K, T> buffer = Collections.synchronizedMap(new LinkedHashMap<K, T>());
+  private Map<PK, T> buffer = Collections.synchronizedMap(new LinkedHashMap<PK, T>());
 
   public static final ThreadLocal<BinaryEncoder> encoders =
       new ThreadLocal<BinaryEncoder>();
-  
+
   /**
    * Create a {@link java.util.concurrent.ConcurrentHashMap} for the 
    * datum readers and writers. 
@@ -127,20 +135,18 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
    */
   public static final ConcurrentHashMap<String, SpecificDatumWriter<?>> writerMap = 
       new ConcurrentHashMap<String, SpecificDatumWriter<?>>();
-  
-  /** The default constructor for CassandraStore */
-  public CassandraStore() throws Exception {
-  }
 
-  /** 
-   * Initialize is called when then the call to 
-   * {@link org.apache.gora.store.DataStoreFactory#createDataStore(Class<D> dataStoreClass, Class<K> keyClass, Class<T> persistent, org.apache.hadoop.conf.Configuration conf)}
-   * is made. In this case, we merely delegate the store initialization to the 
-   * {@link org.apache.gora.cassandra.store.CassandraClient#initialize(Class<K> keyClass, Class<T> persistentClass)}. 
+  /**
+   * Initialize is called when then the call to {@link
+   * org.apache.gora.store.DataStoreFactory#createDataStore(Class<D> dataStoreClass, Class<K>
+   * keyClass, Class<T> persistent, org.apache.hadoop.conf.Configuration conf)} is made. In this
+   * case, we merely delegate the store initialization to the {@link
+   * org.apache.gora.cassandra.store.CassandraClient#initialize(Class<K> keyClass, Class<T>
+   * persistentClass)}.
    */
-  public void initialize(Class<K> keyClass, Class<T> persistent, Properties properties) {
+  public void initialize(Class<PK> primaryKeyClass, Class<T> persistentClass, Properties properties) {
     try {
-      super.initialize(keyClass, persistent, properties);
+      super.initialize(primaryKeyClass, persistentClass, properties);
       if (autoCreateSchema) {
         // If this is not set, then each Cassandra client should set its default
         // column family
@@ -149,7 +155,8 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
         readOpConsLvl = DataStoreFactory.findProperty(properties, this, READ_OP_CL, null);
         writeOpConsLvl = DataStoreFactory.findProperty(properties, this, WRITE_OP_CL, null);
       }
-      this.cassandraClient.initialize(keyClass, persistent, properties);
+      this.cassandraClient.initialize(primaryKeyClass, persistentClass);
+      this.keyMapper = cassandraClient.getKeyMapper();    
     } catch (Exception e) {
       LOG.error(e.getMessage());
       LOG.error(e.getStackTrace().toString());
@@ -169,13 +176,13 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
   }
 
   @Override
-  public boolean delete(K key) {
+  public boolean delete(PK key) {
     this.cassandraClient.deleteByKey(key);
     return true;
   }
 
   @Override
-  public long deleteByQuery(Query<K, T> query) {
+  public long deleteByQuery(Query<PK, T> query) {
     LOG.debug("delete by query " + query);
     return 0;
   }
@@ -187,25 +194,23 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
   }
 
   /**
-   * When executing Gora Queries in Cassandra we query the Cassandra keyspace by families.
-   * When we add sub/supercolumns, Gora keys are mapped to Cassandra partition keys only. 
-   * This is because we follow the Cassandra logic where column family data is 
-   * partitioned across nodes based on row Key.
+   *  When executing Gora Queries in Cassandra we query the Cassandra keyspace by families. When add
+   * sub/supercolumns, Gora keys are mapped to Cassandra composite primary keys.
    */
   @Override
-  public Result<K, T> execute(Query<K, T> query) {
+  public Result<PK, T> execute(Query<PK, T> query) {
 
     Map<String, List<String>> familyMap = this.cassandraClient.getFamilyMap(query);
     Map<String, String> reverseMap = this.cassandraClient.getReverseMap(query);
 
-    CassandraQuery<K, T> cassandraQuery = new CassandraQuery<K, T>();
+    CassandraQuery<PK, T> cassandraQuery = new CassandraQuery<PK, T>();
     cassandraQuery.setQuery(query);
     cassandraQuery.setFamilyMap(familyMap);
 
-    CassandraResult<K, T> cassandraResult = new CassandraResult<K, T>(this, query);
+    CassandraResult<PK, T> cassandraResult = new CassandraResult<PK, T>(this, query);
     cassandraResult.setReverseMap(reverseMap);
 
-    CassandraResultSet<K> cassandraResultSet = new CassandraResultSet<K>();
+    CassandraResultList<PK> cassandraResultList = new CassandraResultList<PK>();
 
     // We query Cassandra keyspace by families.
     for (String family : familyMap.keySet()) {
@@ -213,78 +218,104 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
         continue;
       }
       if (this.cassandraClient.isSuper(family)) {
-        addSuperColumns(family, cassandraQuery, cassandraResultSet);
+        addSuperColumns(family, cassandraQuery, cassandraResultList);
 
       } else {
-        addSubColumns(family, cassandraQuery, cassandraResultSet);
+        addSubColumns(family, cassandraQuery, cassandraResultList);
       }
     }
 
-    cassandraResult.setResultSet(cassandraResultSet);
+    cassandraResult.setResultSet(cassandraResultList);
 
     return cassandraResult;
   }
 
   /**
-   * When we add subcolumns, Gora keys are mapped to Cassandra partition keys only. 
-   * This is because we follow the Cassandra logic where column family data is 
-   * partitioned across nodes based on row Key.
+   * When querying for columns, Gora keys are mapped to Cassandra Primary Keys consisting of
+   * partition keys and column names. The Cassandra Primary Keys resulting from the query are mapped
+   * back to Gora Keys. Each result row might contain clustered fields associated with multiple
+   * persistent entities. Row columns are mapped to persistent entities by means of the clustering
+   * information contained in their Gora key.
    */
-  private void addSubColumns(String family, CassandraQuery<K, T> cassandraQuery,
-      CassandraResultSet<K> cassandraResultSet) {
-    // select family columns that are included in the query
-    List<Row<K, ByteBuffer, ByteBuffer>> rows = this.cassandraClient.execute(cassandraQuery, family);
+  private void addSubColumns(String family, CassandraQuery<PK, T> cassandraQuery, CassandraResultList<PK> cassandraResultList) {
+    // retrieve key range corresponding to the query parameters (triggers cassandra call)
+    List<Row<DynamicComposite, DynamicComposite, ByteBuffer>> rows = this.cassandraClient.execute(cassandraQuery, family);
 
-    for (Row<K, ByteBuffer, ByteBuffer> row : rows) {
-      K key = row.getKey();
+    // loop result rows
+    for (Row<DynamicComposite, DynamicComposite, ByteBuffer> row : rows) {
+      DynamicComposite compositeRowKey = row.getKey();
+      ColumnSlice<DynamicComposite, ByteBuffer> columnSlice = row.getColumnSlice();
 
-      // find associated row in the resultset
-      CassandraRow<K> cassandraRow = cassandraResultSet.getRow(key);
-      if (cassandraRow == null) {
-        cassandraRow = new CassandraRow<K>();
-        cassandraResultSet.putRow(key, cassandraRow);
-        cassandraRow.setKey(key);
-      }
+      // loop result columns
+      for (HColumn<DynamicComposite, ByteBuffer> hColumn : columnSlice.getColumns()) {
+        // extract complex primary key
+        DynamicComposite compositeColumnName = hColumn.getName();
+        PK partKey = cassandraClient.getKeyMapper().getPrimaryKey(compositeRowKey, compositeColumnName);
 
-      ColumnSlice<ByteBuffer, ByteBuffer> columnSlice = row.getColumnSlice();
+        // find associated slice in the result list
+        CassandraMixedRow<PK> mixedRow = cassandraResultList.getMixedRow(partKey);
+        if (mixedRow == null) {
+          mixedRow = new CassandraMixedRow<PK>();
+          cassandraResultList.putMixedRow(partKey, mixedRow);
+          mixedRow.setKey(partKey);
+        }
 
-      for (HColumn<ByteBuffer, ByteBuffer> hColumn : columnSlice.getColumns()) {
-        CassandraSubColumn cassandraSubColumn = new CassandraSubColumn();
-        cassandraSubColumn.setValue(hColumn);
-        cassandraSubColumn.setFamily(family);
-        cassandraRow.add(cassandraSubColumn);
-      }
+        // create column representation
+        CassandraSubColumn<DynamicComposite> compositeColumn = new CassandraSubColumn<DynamicComposite>();
+        compositeColumn.setValue(hColumn);
+        compositeColumn.setFamily(family);
 
-    }
+        // add column to slice
+        mixedRow.add(compositeColumn);
+
+      }// loop columns
+
+    }// loop rows
   }
 
   /**
-   * When we add supercolumns, Gora keys are mapped to Cassandra partition keys only. 
-   * This is because we follow the Cassandra logic where column family data is 
-   * partitioned across nodes based on row Key.
+   * When querying for superColumns, Gora keys are mapped to Cassandra Primary Keys consisting of
+   * partition keys and column names. The Cassandra Primary Keys resulting from the query are mapped
+   * back to Gora Keys. Each result row might contain clustered fields associated with multiple
+   * persistent entities. Row columns are mapped to persistent entities by means of the clustering
+   * information contained in their Gora key.
    */
-  private void addSuperColumns(String family, CassandraQuery<K, T> cassandraQuery, 
-      CassandraResultSet<K> cassandraResultSet) {
+  private void addSuperColumns(String family, CassandraQuery<PK, T> cassandraQuery, 
+      CassandraResultList<PK> cassandraResultList) {
+    // retrieve key range corresponding to the query parameters (triggers cassandra call)
+    List<SuperRow<DynamicComposite, DynamicComposite, ByteBuffer, ByteBuffer>> superRows = 
+        this.cassandraClient.executeSuper(cassandraQuery, family);
 
-    List<SuperRow<K, String, ByteBuffer, ByteBuffer>> superRows = this.cassandraClient.executeSuper(cassandraQuery, family);
-    for (SuperRow<K, String, ByteBuffer, ByteBuffer> superRow: superRows) {
-      K key = superRow.getKey();
-      CassandraRow<K> cassandraRow = cassandraResultSet.getRow(key);
-      if (cassandraRow == null) {
-        cassandraRow = new CassandraRow<K>();
-        cassandraResultSet.putRow(key, cassandraRow);
-        cassandraRow.setKey(key);
+    // loop result rows
+    for (SuperRow<DynamicComposite, DynamicComposite, ByteBuffer, ByteBuffer> superRow : superRows) {
+      DynamicComposite compositeSuperRowKey = superRow.getKey();
+      SuperSlice<DynamicComposite, ByteBuffer, ByteBuffer> superSlice = superRow.getSuperSlice();
+
+      // loop result columns    +      for (HSuperColumn<DynamicComposite, ByteBuffer, ByteBuffer> hSuperColumn : superSlice.getSuperColumns()) {
+      // extract complex primary key
+      DynamicComposite compositeSuperColumnName = hSuperColumn.getName();
+      PK partKey = cassandraClient.getKeyMapper().getPrimaryKey(compositeSuperRowKey, 
+          compositeSuperColumnName);
+
+      // find associated slice in the result list
+      CassandraMixedRow<PK> mixedRow = cassandraResultList.getMixedRow(partKey);
+      if (mixedRow == null) {
+        mixedRow = new CassandraMixedRow<PK>();
+        cassandraResultList.putMixedRow(partKey, mixedRow);
+        mixedRow.setKey(partKey);
       }
 
-      SuperSlice<String, ByteBuffer, ByteBuffer> superSlice = superRow.getSuperSlice();
-      for (HSuperColumn<String, ByteBuffer, ByteBuffer> hSuperColumn: superSlice.getSuperColumns()) {
-        CassandraSuperColumn cassandraSuperColumn = new CassandraSuperColumn();
-        cassandraSuperColumn.setValue(hSuperColumn);
-        cassandraSuperColumn.setFamily(family);
-        cassandraRow.add(cassandraSuperColumn);
-      }
-    }
-  }
+      // create column representation
+      CassandraSuperColumn cassandraSuperColumn = new CassandraSuperColumn();
+      cassandraSuperColumn.setValue(hSuperColumn);
+      cassandraSuperColumn.setFamily(family);
+      // add column to slice
+      mixedRow.add(cassandraSuperColumn);
+
+    }// loop superColumns
+
+  }// loop superROws
+
 
   /**
    * Flush the buffer which is a synchronized {@link java.util.LinkedHashMap}
@@ -297,15 +328,15 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
   @Override
   public void flush() {
 
-    Set<K> keys = this.buffer.keySet();
+    Set<PK> keys = this.buffer.keySet();
 
     // this duplicates memory footprint
     @SuppressWarnings("unchecked")
-    K[] keyArray = (K[]) keys.toArray();
+    PK[] keyArray = (PK[]) keys.toArray();
 
     // iterating over the key set directly would throw 
     //ConcurrentModificationException with java.util.HashMap and subclasses
-    for (K key: keyArray) {
+    for (PK key: keyArray) {
       T value = this.buffer.get(key);
       if (value == null) {
         LOG.info("Value to update is null for key: " + key);
@@ -322,24 +353,24 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
 
     // remove flushed rows from the buffer as all 
     // added or updated fields should now have been written.
-    for (K key: keyArray) {
+    for (PK key: keyArray) {
       this.buffer.remove(key);
     }
   }
 
   @Override
-  public T get(K key, String[] fields) {
-    CassandraQuery<K,T> query = new CassandraQuery<K,T>();
+  public T get(PK key, String[] fields) {
+    CassandraQuery<PK,T> query = new CassandraQuery<PK,T>();
     query.setDataStore(this);
     query.setKeyRange(key, key);
-    
+
     if (fields == null){
       fields = this.getFields();
     }
     query.setFields(fields);
 
     query.setLimit(1);
-    Result<K,T> result = execute(query);
+    Result<PK,T> result = execute(query);
     boolean hasResult = false;
     try {
       hasResult = result.next();
@@ -349,14 +380,57 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
     return hasResult ? result.get() : null;
   }
 
+  /**
+   * @see org.apache.gora.store.DataStore#getPartitions(org.apache.gora.query.Query)
+   *
+   *      the cassandra interpretation of this method relates to the partition components of the
+   *      primary key. Queries with ranges in any part of the complex partition key would possibly
+   *      need to traverse multiple nodes and are generally not possible with non order-preserving
+   *      partitioners.
+   *
+   *      The method will check for partition key ranges and try to decompose them into a set of key
+   *      pairs with absolute partition keys (preserving possible cluster key ranges). Such a
+   *      decomposition is generally only feasible if the size of the associated key set is not too
+   *      big. Therefore, only a few key types are supported including integer, boolean and long
+   *      types.
+   *
+   *      Furthermore, for multi-dimensional partition keys, the range semantics differs from the
+   *      default cassandra behavior. In cassandra, composite keys are stored in lexical order. This
+   *      means that ranges of higher-level keys include the complete value ranges of lower-level
+   *      keys (possibly slightly reduced by ranges of lower-level keys). Because this would result
+   *      in far too many absolute keys (and associated queries), only the specified lower-level
+   *      keys (absolute value or range) are considered. This means that rows with a lower-level key
+   *      outside the specified range are not part of the query result, whereas with default
+   *      cassandra behavior they would be included.
+   *
+   *      As a consequence, the automatic partitioning function is practically restricted to cases,
+   *      where the data model is explicitly designed for it. For instance this works quite well for
+   *      queries that consider modestly wide ranges of single components within a composite
+   *      partition key.
+   *
+   *      If there is no partition key range or decomposition of partition keys is not possible, a
+   *      single partition query will be returned with a warning.
+   *
+   *      Locations are not really relevant from a cassandra point of view, because performance
+   *      gains from local queries are not likely to be significant. As a possible TODO, the default
+   *      node (and possibly also replica nodes) associated with a partition key could be computed.
+   *
+   */
   @Override
-  public List<PartitionQuery<K, T>> getPartitions(Query<K, T> query)
+  public List<PartitionQuery<PK, T>> getPartitions(Query<PK, T> query)
       throws IOException {
-    // TODO GORA-298 Implement CassandraStore#getPartitions
-    List<PartitionQuery<K,T>> partitions = new ArrayList<PartitionQuery<K,T>>();
-    PartitionQueryImpl<K, T> pqi = new PartitionQueryImpl<K, T>(query);
-    pqi.setConf(getConf());
-    partitions.add(pqi);
+    // result list
+    List<PartitionQuery<PK, T>> partitions = new ArrayList<PartitionQuery<PK, T>>();
+
+    // a map holding key pairs for distinct partitions
+    Map<PK, PK> keyMap = keyMapper.decomposePartionKeys(query.getStartKey(), query.getEndKey());
+
+    // create a partition query for each partition key pair.
+    for (Entry<PK, PK> e : keyMap.entrySet()) {
+      PartitionQueryImpl<PK, T> pqi = new PartitionQueryImpl<PK, T>(query, e.getKey(), e.getValue());
+      pqi.setConf(getConf());
+      partitions.add(pqi);
+    } 
     return partitions;
   }
 
@@ -370,8 +444,8 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
   }
 
   @Override
-  public Query<K, T> newQuery() {
-    Query<K,T> query = new CassandraQuery<K, T>(this);
+  public Query<PK, T> newQuery() {
+    Query<PK,T> query = new CassandraQuery<PK, T>(this);
     query.setFields(getFieldsToQuery(null));
     return query;
   }
@@ -411,7 +485,7 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
    * @param value Record object to be persisted in Cassandra
    */
   @Override
-  public void put(K key, T value) {
+  public void put(PK key, T value) {
     Schema schema = value.getSchema();
     @SuppressWarnings("unchecked")
     T p = (T) SpecificData.get().newRecord(value, schema);
@@ -420,6 +494,7 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
       if (!value.isDirty(i)) {
         continue;
       }
+      // if field dirty
       Field field = fields.get(i);
       Type type = field.schema().getType();
       Object fieldValue = value.get(field.pos());
@@ -427,7 +502,7 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
       // check if field has a nested structure (array, map, record or union)
       fieldValue = getFieldValue(fieldSchema, type, fieldValue);
       p.put(field.pos(), fieldValue);
-    }
+    }// loop fields
     // this performs a structural modification of the map
     this.buffer.put(key, p);
   }
@@ -481,7 +556,7 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
     }    
     return fieldValue;
   }
-  
+
   /**
    * Add a field to Cassandra according to its type.
    * @param key     the key of the row where the field should be added
@@ -490,7 +565,7 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
    * @param value   the field value
    */
   @SuppressWarnings({ "unchecked", "rawtypes" })
-  private void addOrUpdateField(K key, Field field, Schema schema, Object value) {
+  private void addOrUpdateField(PK key, Field field, Schema schema, Object value) {
     Type type = schema.getType();
     // checking if the value to be updated is used for saving union schema
     if (field.name().indexOf(CassandraStore.UNION_COL_SUFIX) < 0){
@@ -540,9 +615,9 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
               }
               map = valueMap;
             }
-            
+
             String familyName = this.cassandraClient.getCassandraMapping().getFamily(field.name());
-            
+
             // If map is not super column. We using Avro serializer. 
             if (!this.cassandraClient.isSuper( familyName )){
               try {
@@ -581,7 +656,7 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
         }
         break;
       case UNION:
-     // adding union schema index
+        // adding union schema index
         String columnName = field.name() + UNION_COL_SUFIX;
         String familyName = this.cassandraClient.getCassandraMapping().getFamily(field.name());
         if(value != null) {
@@ -592,7 +667,7 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
             this.cassandraClient.addSubColumn(key, columnName, columnName, schemaPos);
           }else{
             this.cassandraClient.addColumn(key, columnName, schemaPos);
-            
+
           }
           //this.cassandraClient.getCassandraMapping().addColumn(familyName, columnName, columnName);
           // adding union value
@@ -625,7 +700,7 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
    */
   private int getUnionSchema(Object pValue, Schema pUnionSchema){
     int unionSchemaPos = 0;
-//    String valueType = pValue.getClass().getSimpleName();
+    //    String valueType = pValue.getClass().getSimpleName();
     Iterator<Schema> it = pUnionSchema.getTypes().iterator();
     while ( it.hasNext() ){
       Type schemaType = it.next().getType();
@@ -665,4 +740,7 @@ public class CassandraStore<K, T extends PersistentBase> extends DataStoreBase<K
     return cassandraClient.keyspaceExists();
   }
 
+  public CassandraKeyMapper<PK, T> getKeyMapper() {
+    return this.keyMapper;
+  }
 }

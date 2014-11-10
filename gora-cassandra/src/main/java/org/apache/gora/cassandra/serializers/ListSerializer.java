@@ -43,11 +43,14 @@ public class ListSerializer<T> extends AbstractSerializer<List<T>> {
 
   public static final Logger LOG = LoggerFactory.getLogger(ListSerializer.class);
 
+  @SuppressWarnings("rawtypes")
   private static Map<Type, ListSerializer> elementTypeToSerializerMap = new HashMap<Type, ListSerializer>();
+  @SuppressWarnings("rawtypes")
   private static Map<Class, ListSerializer> fixedClassToSerializerMap = new HashMap<Class, ListSerializer>();
 
-  public static ListSerializer get(Type elementType) {
-    ListSerializer serializer = elementTypeToSerializerMap.get(elementType);
+  @SuppressWarnings("rawtypes")
+  public static ListSerializer<?> get(Type elementType) {
+    ListSerializer<?> serializer = elementTypeToSerializerMap.get(elementType);
     if (serializer == null) {
       serializer = new ListSerializer(elementType);
       elementTypeToSerializerMap.put(elementType, serializer);
@@ -55,11 +58,12 @@ public class ListSerializer<T> extends AbstractSerializer<List<T>> {
     return serializer;
   }
 
-  public static ListSerializer get(Type elementType, Class clazz) {
+  @SuppressWarnings({ "unchecked", "rawtypes" })
+  public static ListSerializer<?> get(Type elementType, Class<?> clazz) {
     if (elementType != Type.FIXED) {
       return null;
     }
-    ListSerializer serializer = elementTypeToSerializerMap.get(clazz);
+    ListSerializer<?> serializer = elementTypeToSerializerMap.get(clazz);
     if (serializer == null) {
       serializer = new ListSerializer(clazz);
       fixedClassToSerializerMap.put(clazz, serializer);
@@ -67,7 +71,7 @@ public class ListSerializer<T> extends AbstractSerializer<List<T>> {
     return serializer;
   }
 
-  public static ListSerializer get(Schema elementSchema) {
+  public static ListSerializer<?> get(Schema elementSchema) {
     Type type = elementSchema.getType();
     if (type == Type.FIXED) {
       return get(Type.FIXED, TypeUtils.getClass(elementSchema));
@@ -76,9 +80,11 @@ public class ListSerializer<T> extends AbstractSerializer<List<T>> {
     }
   }
 
+  @SuppressWarnings("unused")
   private Schema elementSchema = null;
   private Type elementType = null;
   private int size = -1;
+  @SuppressWarnings("unused")
   private Class<T> clazz = null;
   private Serializer<T> elementSerializer = null;
 
