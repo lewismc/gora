@@ -48,7 +48,6 @@ import org.apache.avro.generic.GenericData.Array;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificDatumWriter;
-import org.apache.avro.util.Utf8;
 import org.apache.gora.cassandra.query.CassandraQuery;
 import org.apache.gora.cassandra.query.CassandraResult;
 import org.apache.gora.cassandra.query.CassandraResultList;
@@ -704,7 +703,7 @@ public class CassandraStore<PK, T extends PersistentBase> extends DataStoreBase<
     Iterator<Schema> it = pUnionSchema.getTypes().iterator();
     while ( it.hasNext() ){
       Type schemaType = it.next().getType();
-      if (pValue instanceof Utf8 && schemaType.equals(Type.STRING))
+      if (pValue instanceof CharSequence && schemaType.equals(Type.STRING))
         return unionSchemaPos;
       else if (pValue instanceof ByteBuffer && schemaType.equals(Type.BYTES))
         return unionSchemaPos;

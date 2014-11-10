@@ -166,6 +166,11 @@ public class CassandraClient<PK, T extends PersistentBase> {
 
     //initialize the mutator
     this.mutator = HFactory.createMutator(this.keyspace, new DynamicCompositeSerializer());
+    
+    //this.keySerializer = GoraSerializerTypeInferer.getSerializer(keyClass);
+    //if (this.keySerializer == null)
+    //  LOG.error("Serializer for " + keyClass + " not found.");
+    //this.mutator = HFactory.createMutator(this.keyspace, this.keySerializer);
   }
 
   /**
