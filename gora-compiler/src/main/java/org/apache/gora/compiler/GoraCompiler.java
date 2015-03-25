@@ -58,6 +58,7 @@ public class GoraCompiler extends SpecificCompiler {
     for (File src : srcFiles) {
       System.out.println("Compiling: " + src.getAbsolutePath());
       Schema originalSchema = parser.parse(src);
+      @SuppressWarnings("unused")
       Map<Schema,Schema> queue = new HashMap<Schema,Schema>();
       //Schema newSchema = getSchemaWithDirtySupport(originalSchema, queue);
       Schema newSchema = originalSchema;
